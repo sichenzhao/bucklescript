@@ -10230,7 +10230,7 @@ module type PRINTER =
 
 let prepare_output_file = function
     | Some name -> open_out name
-    | None -> set_binary_mode_output stdout true; stdout
+    | None -> set_binary_mode_out stdout true; stdout
 
 let close_output_file output_file output_chan =
     match output_file with
