@@ -25361,6 +25361,7 @@ val better_errors : bool ref
 val sort_imports : bool ref 
 val dump_js : bool ref
 val syntax_only  : bool ref
+val no_syntax_deps : bool ref
 val binary_ast : bool ref
 
 
@@ -25603,6 +25604,7 @@ let dump_js = ref false
 
 
 let syntax_only = ref false
+let no_syntax_deps = ref false 
 let binary_ast = ref false
 
 

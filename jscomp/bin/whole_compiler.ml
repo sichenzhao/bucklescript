@@ -22309,6 +22309,7 @@ val better_errors : bool ref
 val sort_imports : bool ref 
 val dump_js : bool ref
 val syntax_only  : bool ref
+val no_syntax_deps : bool ref
 val binary_ast : bool ref
 
 
@@ -22551,6 +22552,7 @@ let dump_js = ref false
 
 
 let syntax_only = ref false
+let no_syntax_deps = ref false 
 let binary_ast = ref false
 
 
@@ -25311,6 +25313,11 @@ val read_ast : 'a Ast_extract.kind -> string -> 'a
 
 
 
+(** Serialize plain ast which could be consumed by vanilla OCaml 
+  directly
+*)
+val write_no_deps_ast : fname:string -> output:string -> 'a Ast_extract.kind -> 'a -> unit
+
 (**
    Check out {!Depends_post_process} for set decoding
    The [.ml] file can be recognized as an ast directly, the format
@@ -25381,6 +25388,19 @@ let read_ast (type t ) (kind : t  Ast_extract.kind) fn : t  =
   with exn ->
     close_in ic;
     raise exn
+
+
+let write_no_deps_ast (type t) ~(fname : string) ~output 
+  (kind : t Ast_extract.kind) ( pt : t) : unit =
+  let magic = 
+    match kind with 
+    | Ast_extract.Ml -> Config.ast_impl_magic_number
+    | Ast_extract.Mli -> Config.ast_intf_magic_number in
+  let oc = open_out_bin output in 
+  output_string oc magic ;
+  output_value oc fname;
+  output_value oc pt;
+  close_out oc 
 
 
 (*
@@ -106672,15 +106692,23 @@ let print_if ppf flag printer arg =
 
 let after_parsing_sig ppf sourcefile outputprefix ast  =
   if !Js_config.binary_ast then
-    begin 
-      Binary_ast.write_ast
+    if !Js_config.no_syntax_deps then 
+      Binary_ast.write_no_deps_ast
         Mli
         ~fname:sourcefile
         ~output:(outputprefix ^ Literals.suffix_mliast)
         (* to support relocate to another directory *)
         ast 
+    else 
+      begin 
+        Binary_ast.write_ast
+          Mli
+          ~fname:sourcefile
+          ~output:(outputprefix ^ Literals.suffix_mliast)
+          (* to support relocate to another directory *)
+          ast 
 
-    end;
+      end;
   if !Js_config.syntax_only then () else 
     begin 
       if not @@ !Js_config.no_warn_unused_bs_attribute then 
@@ -106720,15 +106748,20 @@ let interface_mliast ppf sourcefile outputprefix  =
   |> print_if ppf Clflags.dump_parsetree Printast.interface
   |> print_if ppf Clflags.dump_source Pprintast.signature 
   |> after_parsing_sig ppf sourcefile outputprefix 
-  
+
 let after_parsing_impl ppf sourcefile outputprefix ast =
   if !Js_config.binary_ast then
+    if !Js_config.no_syntax_deps then 
+      Binary_ast.write_no_deps_ast ~fname:sourcefile 
+        Ml ~output:(outputprefix ^ Literals.suffix_mlast)
+        ast (* quick hack, should have a different suffix name *)
+    else 
       Binary_ast.write_ast ~fname:sourcefile 
         Ml ~output:(outputprefix ^ Literals.suffix_mlast)
         ast ;
   if !Js_config.syntax_only then () else 
     begin
-      
+
       if not @@ !Js_config.no_warn_unused_bs_attribute then 
         Bs_ast_invariant.emit_external_warnings.structure Bs_ast_invariant.emit_external_warnings ast ;
       if Js_config.get_diagnose () then
@@ -107451,7 +107484,7 @@ let batch_files  = ref []
 let script_dirs = ref []
 let main_file  = ref ""
 let eval_string = ref ""
-    
+
 let collect_file name = 
   batch_files := name :: !batch_files
 let add_bs_dir v = 
@@ -107462,13 +107495,13 @@ let set_main_entry name =
     raise (Arg.Bad ("-bs-main conflicts with -bs-eval")) else 
   if Sys.file_exists name then 
     main_file := name else
-  raise (Arg.Bad ("file " ^ name ^ " don't exist"))
+    raise (Arg.Bad ("file " ^ name ^ " don't exist"))
 
 
 let set_eval_string s = 
   if !main_file <> "" then 
     raise (Arg.Bad ("-bs-main conflicts with -bs-eval")) else 
-  eval_string :=  s 
+    eval_string :=  s 
 
 
 
@@ -107486,7 +107519,7 @@ let pp_directive_value fmt (x : Lexer.directive_value) =
   | Dir_int b -> Format.pp_print_int fmt b
   | Dir_float b -> Format.pp_print_float fmt b
   | Dir_string s  -> Format.fprintf fmt "%S" s
-                       
+
 let list_variables () =
   let fmt = Format.err_formatter in
   Lexer.iter_directive_built_in_value
@@ -107494,7 +107527,7 @@ let list_variables () =
        Format.fprintf
          fmt "@[%s@ %a@]@."
          s pp_directive_value dir_value
-         
+
     )
 
 let define_variable s =
@@ -107521,19 +107554,19 @@ let define_variable s =
       end
 
   | _ -> raise (Arg.Bad ("illegal definition" ^ s))
-  
+
 let buckle_script_flags =
   ("-bs-no-implicit-include", Arg.Set Clflags.no_implicit_current_dir
   , " Don't include current dir implicitly")
   :: 
   ("-bs-assume-has-mli", Arg.Unit (fun _ -> Clflags.assume_no_mli := Clflags.Mli_exists), 
-    " (internal) Assume mli always exist ")
+   " (internal) Assume mli always exist ")
   ::
   ("-bs-assume-no-mli", Arg.Unit (fun _ -> Clflags.assume_no_mli := Clflags.Mli_non_exists),
-  " (internal) Don't lookup whether mli exist or not")
+   " (internal) Don't lookup whether mli exist or not")
   ::
   ("-bs-D", Arg.String define_variable,
-     " Define conditional variable e.g, -D DEBUG=true"
+   " Define conditional variable e.g, -D DEBUG=true"
   )
   ::
   ("-bs-list-conditionals",
@@ -107545,9 +107578,14 @@ let buckle_script_flags =
     " Generate binary .mli_ast and ml_ast"
   )
   ::
+  ("-bs-no-syntax-deps",
+   Arg.Set Js_config.no_syntax_deps,
+   " (internal) don't record deps in binary ast"
+  )
+  ::
   ("-bs-syntax-only", 
    Arg.Set Js_config.syntax_only,
-   " only check syntax"
+   " (internal)only check syntax"
   )
   ::
   ("-bs-no-bin-annot", Arg.Clear Clflags.binary_annotations, 
@@ -107558,13 +107596,13 @@ let buckle_script_flags =
    " (experimental) Set the string to be evaluated, note this flag will be conflicted with -bs-main"
   )
   ::("-bs-no-error-unused-attribute",
-    Arg.Set Js_config.no_error_unused_bs_attribute,
-    " No error when seeing unused attribute"
-    (* We introduce such flag mostly 
-      for work around 
-      in case some embarassing compiler bugs
-    *)
-  )
+     Arg.Set Js_config.no_error_unused_bs_attribute,
+     " No error when seeing unused attribute"
+     (* We introduce such flag mostly 
+        for work around 
+        in case some embarassing compiler bugs
+     *)
+    )
   ::
   (
     "-bs-sort-imports",
@@ -107594,7 +107632,7 @@ let buckle_script_flags =
    Arg.String Js_config.set_npm_package_path, 
    " set npm-output-path: [opt_module]:path, for example: 'lib/cjs', 'amdjs:lib/amdjs', 'es6:lib/es6' and 'goog:lib/gjs'")
   ::
-  
+
   ("-bs-no-warn-unused-bs-attribute",
    Arg.Set Js_config.no_warn_unused_bs_attribute,
    " disable warnings on unused bs. attribute"

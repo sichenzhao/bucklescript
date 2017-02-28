@@ -27,6 +27,11 @@ val read_ast : 'a Ast_extract.kind -> string -> 'a
 
 
 
+(** Serialize plain ast which could be consumed by vanilla OCaml 
+  directly
+*)
+val write_no_deps_ast : fname:string -> output:string -> 'a Ast_extract.kind -> 'a -> unit
+
 (**
    Check out {!Depends_post_process} for set decoding
    The [.ml] file can be recognized as an ast directly, the format

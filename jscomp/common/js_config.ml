@@ -234,5 +234,6 @@ let dump_js = ref false
 
 
 let syntax_only = ref false
+let no_syntax_deps = ref false 
 let binary_ast = ref false
 

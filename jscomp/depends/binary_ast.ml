@@ -50,6 +50,19 @@ let read_ast (type t ) (kind : t  Ast_extract.kind) fn : t  =
     raise exn
 
 
+let write_no_deps_ast (type t) ~(fname : string) ~output 
+  (kind : t Ast_extract.kind) ( pt : t) : unit =
+  let magic = 
+    match kind with 
+    | Ast_extract.Ml -> Config.ast_impl_magic_number
+    | Ast_extract.Mli -> Config.ast_intf_magic_number in
+  let oc = open_out_bin output in 
+  output_string oc magic ;
+  output_value oc fname;
+  output_value oc pt;
+  close_out oc 
+
+
 (*
    Reasons that we don't [output_value] the set:
    1. for performance , easy skipping and calcuate the length 

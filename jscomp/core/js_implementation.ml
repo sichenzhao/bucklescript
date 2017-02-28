@@ -30,15 +30,23 @@ let print_if ppf flag printer arg =
 
 let after_parsing_sig ppf sourcefile outputprefix ast  =
   if !Js_config.binary_ast then
-    begin 
-      Binary_ast.write_ast
+    if !Js_config.no_syntax_deps then 
+      Binary_ast.write_no_deps_ast
         Mli
         ~fname:sourcefile
         ~output:(outputprefix ^ Literals.suffix_mliast)
         (* to support relocate to another directory *)
         ast 
+    else 
+      begin 
+        Binary_ast.write_ast
+          Mli
+          ~fname:sourcefile
+          ~output:(outputprefix ^ Literals.suffix_mliast)
+          (* to support relocate to another directory *)
+          ast 
 
-    end;
+      end;
   if !Js_config.syntax_only then () else 
     begin 
       if not @@ !Js_config.no_warn_unused_bs_attribute then 
@@ -78,15 +86,20 @@ let interface_mliast ppf sourcefile outputprefix  =
   |> print_if ppf Clflags.dump_parsetree Printast.interface
   |> print_if ppf Clflags.dump_source Pprintast.signature 
   |> after_parsing_sig ppf sourcefile outputprefix 
-  
+
 let after_parsing_impl ppf sourcefile outputprefix ast =
   if !Js_config.binary_ast then
+    if !Js_config.no_syntax_deps then 
+      Binary_ast.write_no_deps_ast ~fname:sourcefile 
+        Ml ~output:(outputprefix ^ Literals.suffix_mlast)
+        ast (* quick hack, should have a different suffix name *)
+    else 
       Binary_ast.write_ast ~fname:sourcefile 
         Ml ~output:(outputprefix ^ Literals.suffix_mlast)
         ast ;
   if !Js_config.syntax_only then () else 
     begin
-      
+
       if not @@ !Js_config.no_warn_unused_bs_attribute then 
         Bs_ast_invariant.emit_external_warnings.structure Bs_ast_invariant.emit_external_warnings ast ;
       if Js_config.get_diagnose () then
